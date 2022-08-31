@@ -1,0 +1,189 @@
+#!/bin/bash
+#
+# $File: //ASP/opa/acc/eqc/saf/ludlum_m375/trunk/Ludlum_M375Sup/src/ludlum_m375_manage $
+# $Revision: #6 $
+# $DateTime: 2020/12/07 19:28:19 $
+# Last checked in by: $Author: starritt $
+#
+# Description:
+# Service script runs this once a minute.
+#
+# Copyright (c) 2020 Australian Synchrotron
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# Licence as published by the Free Software Foundation; either
+# version 2.1 of the Licence, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public Licence for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# Licence along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# Original author: Andrew Starritt
+# Maintained by:   Andrew Starritt
+#
+# Contact details:
+# as-open-source@ansto.gov.au
+# 800 Blackburn Road, Clayton, Victoria 3168, Australia.
+#
+
+iam=$( basename $0 )
+
+# This is hard coded
+#
+c2c_prog="ludlum_m375_c2c"
+
+
+function terminate () {
+   local arg
+   for arg in "$@" ; do
+      echo 1>&2 "${arg}"
+   done
+   exit 1
+}
+
+
+function usage () {
+   terminate "${1}"  ""                   \
+             "usage: ${iam:?} map_file"   \
+             "       ${iam:?} --help|-h"  \
+             ""
+}
+
+function help () {
+   cat << HELPINFO
+Manages the running instances of the ${c2c_prog} program, as 
+defined in the map_file configuration file.
+
+usage: ${iam:?} map_file
+       ${iam:?} --help|-h
+
+Options
+--help, -h     Show this help information and exit.
+
+Parameters
+map_file       Defines the client-to-client connections.
+               Must be a file /dev/null not allowed
+
+HELPINFO
+}
+
+if [ "${1}" == "--help" ] || [ "${1}" == "-h" ] ; then
+   help
+   exit 0
+fi
+
+if [ $# -lt 1 ] || [ -z "${1}" ] ; then
+   usage "${iam}: null of missing parameter"
+   exit 0
+fi
+
+# Assign meanifull parameter name
+#
+map_file=${1:?}
+
+if [ ! -f ${map_file:?} ] || [ ! -r ${map_file:?} ] ; then
+   terminate "${map_file:?} is not a file and/or is not readable"
+fi
+
+# Extract defined and running instances
+# These are items of the form  name-NNNN-name-MMMM
+# The hyphens ensure the 4-tuple is treat as a single item.
+#
+defined=$( cat ${map_file:?} | grep -v '^#' | grep -v '^ *$' | awk '{ print $1"-"$2"-"$3"-"$4     }' )
+
+# Isolate running c2c prog, grab last 4 arguments and hyphen jpin.
+# 
+running=$( ps -ef | grep "/${c2c_prog:?}" | grep -v grep | rev | cut -d ' ' -f 1-4  | rev | tr ' ' '-' )
+
+# For debugging
+#
+# echo Defined
+# echo "$defined" | tr '-' ' '
+# echo ""
+#
+# echo Active
+# echo "$running" | tr '-' ' '
+# echo ""
+
+
+# Finds and stop the c2c processes no-longer required.
+#
+for p in ${running} ; do
+
+    is_defined=0
+    for q in ${defined} ; do
+        if [ "${p}" == "${q}" ] ; then
+            is_defined=1
+            break
+        fi
+    done
+
+    if [ ${is_defined:?} -eq 0 ] ; then
+        # Not defined - stop if currently running
+        #
+        tuple="$( echo ${p} | tr '-' ' ' )"
+        pattern="/${c2c_prog:?} -wd2 5 ${tuple}"
+        pid=$( ps -ef | grep "${pattern:?}" | grep -v grep | awk '{ print $2 }' )
+        if [ -n "${pid}" ] ; then
+            # First ask nicely ...
+            #
+            echo "${c2c_prog:?} ${tuple} is running and is no longer required, terminating pid $pid"
+            kill ${pid:?}
+            sleep 1
+
+            pid=$( ps -ef | grep "${pattern:?}" | grep -v grep | awk '{ print $2 }' )
+            if [ -n "${pid}" ] ; then
+                # Still running, hold no punches now ...
+                echo "${c2c_prog:?} ${tuple} is still running and not required, killing pid $pid"
+                kill -9 ${pid:?}
+            fi
+        fi
+    fi
+
+done
+echo ""
+
+
+# Start processes that are not running and now required.
+#
+k=100
+for p in ${defined} ; do
+    k=$( expr ${k} + 1 )
+
+    is_running=0
+    for q in ${running} ; do
+        if [ "${p}" == "${q}" ] ; then
+            is_running=1
+            break 
+        fi
+    done
+
+    if [ ${is_running:?} -eq 0 ] ; then 
+        # Break hyphen joined tuple into space separated parts.
+        # 
+        tuple="$( echo ${p} | tr '-' ' ' )"
+        echo "${c2c_prog:?} ${tuple} not running, starting"
+
+        # Run c2c_prog as a daemon
+        # -wd2 - watch dog auto restart - 5 minutes.
+        #
+        mkdir -p /asp/logs/ludlum_m375
+        export PYTHONUNBUFFERED=YES
+        daemon -n -l ${c2c_prog:?} -wd2 5 ${tuple} >> /asp/logs/ludlum_m375/c2c-${p}.log  2>&1
+
+    fi
+
+done
+echo ""
+
+# Now set/reset control function box status
+#
+ludlum_set_controller_function ${map_file:?}
+
+# end

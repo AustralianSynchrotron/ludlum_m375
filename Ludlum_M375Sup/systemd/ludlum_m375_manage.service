@@ -1,0 +1,29 @@
+# $File: //ASP/opa/acc/eqc/saf/ludlum_m375/trunk/Ludlum_M375Sup/systemd/ludlum_m375_manage.service $
+# $Revision: #2 $
+# $DateTime: 2020/04/01 17:09:04 $
+# Last checked in by: $Author: starritt $
+#
+# systemd ludlum_m375_manage.service config file.
+#
+# Locate in /usr/lib/systemd/system
+#
+# Note: do not confuse with generic service wrapper script of the same name.
+#
+
+[Unit]
+Description=Ludlum connection manager service
+After=epics.service
+DefaultDependencies=no
+
+[Service]
+Type=forking
+RemainAfterExit=yes
+ExecStart=/asp/config/ludlum_m375_manage.service start
+ExecStop=/asp/config/ludlum_m375_manage.service stop
+KillMode=none
+SendSIGKILL=no
+
+[Install]
+WantedBy=default.target
+
+# end

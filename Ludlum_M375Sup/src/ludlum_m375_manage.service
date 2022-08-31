@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+# $File: //ASP/opa/acc/eqc/saf/ludlum_m375/trunk/Ludlum_M375Sup/src/ludlum_m375_manage.service $
+# $Revision: #2 $
+# $DateTime: 2020/02/27 10:08:42 $
+# Last checked in by: $Author: starritt $
+#
+# Ludlum M375 connection management service
+#
+# Set up environment variables to configure the generic.service script.
+#
+export SERVICE_SERVICE=$( basename $0 )
+export SERVICE_NAME=ludlum_m375
+export SERVICE_USER=ics
+export SERVICE_SCRIPT="ludlum_m375_manage /asp/config/m375_map"
+export SERVICE_SLEEP=60
+
+# Now run actual service script.
+#
+/asp/ics/ioc/bin/linux-x86_64/generic.service "$@"
+
+# end

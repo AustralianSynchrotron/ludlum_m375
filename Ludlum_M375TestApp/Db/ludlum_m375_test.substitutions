@@ -1,0 +1,15 @@
+# $File: //ASP/opa/acc/eqc/saf/ludlum_m375/trunk/Ludlum_M375TestApp/Db/ludlum_m375_test.substitutions $
+# $Revision: #1 $
+# $DateTime: 2019/10/24 17:42:53 $
+# Last checked in by: $Author: starritt $
+#
+
+# By convension, the device and port name are the same, but we do not enforce this.
+#
+file db/ludlum_m375.template {
+    pattern { DEVICE,       DESC,       PORT,         BGRT   }
+            { "SR15GRM01",  "Gamma",    "SR15GRM01",  "0.0"  }
+            { "SR15NRM01",  "Neutron",  "SR15NRM01",  "0.0"  }
+}
+
+# end

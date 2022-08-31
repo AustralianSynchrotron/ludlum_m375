@@ -1,0 +1,115 @@
+#!/bin/bash
+#
+# $File: //ASP/opa/acc/eqc/saf/ludlum_m375/trunk/Ludlum_M375SimApp/src/ludlum_m375_sim $
+# $Revision: #1 $
+# $DateTime: 2019/10/24 17:42:53 $
+# Last checked in by: $Author: starritt $
+#
+# Description:
+#
+# Copyright (c) 2019  Australian Synchrotron
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# Licence as published by the Free Software Foundation; either
+# version 2.1 of the Licence, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Lesser General Public Licence for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# Licence along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# Contact details:
+# andrews@ansto.gov.au
+# 800 Blackburn Road, Clayton, Victoria 3168, Australia.
+#
+
+
+iam=$( basename $0 )
+
+function terminate() {
+   local arg
+   for arg in "$@" ; do
+      echo 1>&2 "${arg}"
+   done
+   exit 1
+}
+
+function usage () {
+   terminate "${1}" \
+             "usage: ${iam} HOSTNAME PORT"  \
+             "       ${iam} [--help | -h]"
+}
+
+function help () {
+   cat << HELPINFO
+
+usage: ${iam} HOSTNAME PORT
+       ${iam} [--help | -h]
+
+HELPINFO
+}
+
+if [ "${1}" == "--help" ] || [ "${1}" == "-h" ] ; then
+   help
+   exit 0
+fi
+
+if [ $# -lt 2 ] || [ -z "${1}" ] || [ -z "${2}" ] ; then
+    usage "missing/null parameters"
+fi
+
+# Assign meaningfull parameter names
+#
+hostname="${1}"
+port=$( expr 0 + ${2} )
+
+
+function write_rad_mon_data () {
+
+    local n
+    local m
+
+    sleep 2
+    while [ true ] ; do
+        sleep 2
+
+        # Is our telnet session still running
+        #
+        item=$( ps -ef | grep -v grep | grep "telnet ${hostname:?} ${port:?}" )
+        [ -z "${item}" ] && break
+
+        n=$( expr ${RANDOM:?}  / 10000 )
+        m=$( expr ${RANDOM:?}  % 1000  )
+
+        cat <<THIS
+<?xml version="1.0" encoding="us-ascii"?>
+<area_monitor rev="1.0" serial="272137">
+  <status>
+    <rate>${n}.${m}</rate>
+    <units_code>03</units_code>
+    <audio>0</audio>
+    <alarm1>0</alarm1>
+    <alarm2>0</alarm2>
+    <over_range>0</over_range>
+    <monitor>1</monitor>
+    <error_code>0</error_code>
+  </status>
+</area_monitor>
+THIS
+       echo 1>&2 "sent ${n}.${m} to ${hostname:?}:${port:?}"
+    done
+}
+
+
+while [ true ] ; do
+   write_rad_mon_data  | telnet ${hostname:?} ${port:?}  > /dev/null
+   sleep 2
+   echo "re-connecting ..."
+done
+
+# end

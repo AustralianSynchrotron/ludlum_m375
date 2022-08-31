@@ -1,0 +1,28 @@
+<!-- tidied -->
+<?xml version="1.0" encoding="us-ascii"?>
+<area_monitor rev="1.0" serial="272137">
+    <status>
+        <rate>0000.0</rate>
+        <units_code>03</units_code>
+        <audio>0</audio>
+        <alarm1>0</alarm1>
+        <alarm2>0</alarm2>
+        <over_range>0</over_range>
+        <monitor>1</monitor>
+        <error_code>0</error_code>
+    </status>
+</area_monitor>
+
+
+
+
+ncat -lv -p 50000
+
+wait for connection
+
+Ncat: Connection from 10.17.115.111.
+Ncat: Connection from 10.17.115.111:2128.
+<?xml version="1.0" encoding="us-ascii"?><area_monitor rev="1.0" serial="272137"><status><rate>0000.5</rate><units_code>03</units_code><audio>0</audio><alarm1>0</alarm1><alarm2>0</alarm2><over_range>0</over_range><monitor>1</monitor><error_code>0</error_code></status></area_monitor>
+<?xml version="1.0" encoding="us-ascii"?><area_monitor rev="1.0" serial="272137"><status><rate>0000.6</rate><units_code>03</units_code><audio>0</audio><alarm1>0</alarm1><alarm2>0</alarm2><over_range>0</over_range><monitor>1</monitor><error_code>0</error_code></status></area_monitor>
+<?xml version="1.0" encoding="us-ascii"?><area_monitor rev="1.0" serial="272137"><status><rate>0000.0</rate><units_code>03</units_code><audio>0</audio><alarm1>0</alarm1><alarm2>0</alarm2><over_range>0</over_range><monitor>1</monitor><error_code>0</error_code></status></area_monitor>
+<?xml version="1.0" encoding="us-ascii"?><area_monitor rev="1.0" serial="272137"><status><rate>0000.0</rate><units_code>03</units_code><audio>0</audio><alarm1>0</alarm1><alarm2>0</alarm2><over_range>0</over_range><monitor>1</monitor><error_code>0</error_code></status></area_monitor>

@@ -1,0 +1,231 @@
+# $File: //ASP/opa/acc/eqc/saf/ludlum_m375/trunk/Ludlum_M375Sup/Db/ludlum_m375.template $
+# $Revision: #7 $
+# $DateTime: 2021/02/02 17:00:40 $
+# last checked in by: $Author: starritt $
+#
+# Description:
+# SGS 375 Digital Area Monitor radiation monitor template file.
+#
+# Template substitution parameters:
+#
+# DEVICE - the device name, e.g. SR06GRM01
+# PORT   - Asyn port name, typically the same as the device name.
+# BGRT   - estimated backgroud rate (uSv/day)
+# M375_PORT - the TCP IP port that the IOC is using to ludlum_m375_c2c program
+#
+# Copyright (c) 2019-2021  Australian Synchrotron
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# Licence as published by the Free Software Foundation; either
+# version 2.1 of the Licence, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Lesser General Public Licence for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# Licence along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# Contact details:
+# andrews@ansto.gov.au
+# 800 Blackburn Road, Clayton, Victoria 3168, Australia.
+#
+
+# Note: The first 3 records are expected for all radiation montor template files.
+#
+# Radiation Monitor Type
+#
+record (stringin, "$(DEVICE):TYPE_MONITOR") {
+    field (DESC, "Type/model")
+    field (SCAN, "Passive")
+    field (PINI, "YES")
+    field (VAL,  "Ludlum M375")
+}
+
+# Provides a facility unique radiation monitor type number.
+# Currently allocated numbers are:
+#
+#  1 RedLion_CUB5
+#  2 PTW UNIDOS WebLine
+#  3 Atomtex BDK-N01
+#  4 Gamma + Neutron virtual monitor
+#  5 Ludlum M375 Gamma + Neutron
+#
+# This allows clients to perform radiation monitor type specific actions.
+#
+record (longin, "$(DEVICE):KIND_MONITOR") {
+    field (DESC, "Monitor kind")
+    field (SCAN, "Passive")
+    field (PINI, "YES")
+    field (VAL,  "5")
+    field (LOPR, "0")
+    field (HOPR, "10")
+}
+
+# Estimated background measurement rate.
+# This PV should be auto saved.
+# Move to common??
+#
+record (ai, "$(DEVICE):BACKGROUND_MEASURE") {
+    field (DESC, "Estimated daily backgound")
+    field (SCAN, "Passive")
+    field (PINI, "YES")
+    field (VAL,  "$(BGRT)")
+    field (EGU,  "uSv/day")
+    field (PREC, "2")
+    field (LOPR, "0.0")
+    field (HOPR, "20.0")
+    field (ADEL, "0.1")
+    field (MDEL, "0.01")
+}
+
+#-------------------------------------------------------------------------------
+# EPICS driver version
+#
+record (stringin, "$(DEVICE):DRIVER_VERSION") {
+    field (DESC, "EPICS driver version")
+    field (SCAN, "Passive")
+    field (PINI, "YES")
+    field (DTYP, "asynOctetRead")
+    field (INP,  "@asyn($(PORT) 0 1.0) DRIVER_VERSION")
+}
+
+# Allows the accumulated dose to be set/reset.
+#
+record (ao, "$(DEVICE):DOSE_SP") {
+    field (DESC, "Re-set accumulative dose")
+    field (SCAN, "Passive")
+    field (EGU,  "uSv")
+    field (PREC, "3")
+
+    field (LOPR, "0")
+    field (HOPR, "1000")
+    field (MDEL, "0.0")
+    field (ADEL, "0.0")
+    field (FLNK, "$(DEVICE):MAXIMUM_DOSE_MONITOR")
+}
+
+# Snap shot current dose before actual reset.
+# Current has same alarm state as the does monitor.
+# 
+record (ai, "$(DEVICE):MAXIMUM_DOSE_MONITOR") {
+    field (DESC, "Previous maximum dose snap shot")
+    field (SCAN, "Passive")
+    field (INP,  "$(DEVICE):DOSE_MONITOR MS")
+    field (EGU,  "uSv")
+    field (PREC, "3")
+
+    field (LOPR, "0")
+    field (HOPR, "1000")
+    field (MDEL, "0.0001")
+    field (ADEL, "0.001")
+
+    field (FLNK, "$(DEVICE):ACTUAL_DOSE_SP")
+}
+
+# Performs the actual dose to be set/reset.
+#
+record (ao, "$(DEVICE):ACTUAL_DOSE_SP") {
+    field (DESC, "Re-set accumulative dose")
+    field (SCAN, "Passive")
+    field (DTYP, "asynFloat64")
+    field (OUT,  "@asyn($(PORT) 0 1.0) DOSE")
+    field (OMSL, "closed_loop")
+    field (DOL , "$(DEVICE):DOSE_SP")
+    field (EGU,  "uSv")
+    field (PREC, "3")
+
+    field (LOPR, "0")
+    field (HOPR, "1000")
+    field (MDEL, "0.0")
+    field (ADEL, "0.0")
+
+    field (LOLO, "0.0")
+    field (LOW,  "0.0")
+    field (HIGH, "0.0")
+    field (HIHI, "0.0")
+
+    field (LLSV, "NO_ALARM")
+    field (LSV,  "NO_ALARM")
+    field (HSV,  "NO_ALARM")
+    field (HHSV, "NO_ALARM")
+}
+
+record (ai, "$(DEVICE):DOSE_MONITOR") {
+    field (DESC, "Accumulative dose")
+    field (SCAN, "I/O Intr")
+    field (DTYP, "asynFloat64")
+    field (INP,  "@asyn($(PORT) 0 1.0) DOSE")
+
+    field (EGU,  "uSv")
+    field (PREC, "3")
+
+    field (LOPR, "0")
+    field (HOPR, "1000")
+    field (MDEL, "0.0001")
+    field (ADEL, "0.001")
+
+    field (LOLO, "0.0")
+    field (LOW,  "0.0")
+    field (HIGH, "0.0")
+    field (HIHI, "0.0")
+
+    field (LLSV, "NO_ALARM")
+    field (LSV,  "NO_ALARM")
+    field (HSV,  "NO_ALARM")
+    field (HHSV, "NO_ALARM")
+}
+
+record (ai, "$(DEVICE):DOSE_RATE_MONITOR") {
+    field (DESC, "Dose Rate")
+    field (SCAN, "I/O Intr")
+    field (DTYP, "asynFloat64")
+    field (INP,  "@asyn($(PORT) 0 1.0) DOSERATE")
+
+    field (EGU,  "uSv/Hr")
+    field (PREC, "3")
+
+    field (LOPR, "0")
+    field (HOPR, "100")
+    field (MDEL, "0.001")
+    field (ADEL, "0.001")
+
+    field (LOLO, "0.0")
+    field (LOW,  "0.0")
+    field (HIGH, "20.0")
+    field (HIHI, "50.0")
+
+    field (LLSV, "NO_ALARM")
+    field (LSV,  "NO_ALARM")
+    field (HSV,  "MINOR")
+    field (HHSV, "MAJOR")
+}
+
+record (bo, "$(DEVICE):COMMS_RESET_CMD") {
+    field (DESC, "Re-set device comms")
+    field (SCAN, "Passive")
+    field (DTYP, "EXSH")
+    field (OUT,  "@ludlum_m375_comms_reset $(M375_PORT)")
+    field (ZNAM, "No Action")
+    field (ONAM, "Trigger")
+}
+
+
+# Basically a diagnostic
+#
+record (longin, "$(DEVICE):UPDATE_COUNT_MONITOR") {
+    field (DESC, "Update count modulo 100000")
+    field (SCAN, "1 second")
+    field (DTYP, "asynInt32")
+    field (INP,  "@asyn($(PORT) 0 1.0) COUNT")
+
+    field (LOPR, "0")
+    field (HOPR, "100000")
+    field (MDEL, "0")
+    field (ADEL, "100")
+}
+
+# end

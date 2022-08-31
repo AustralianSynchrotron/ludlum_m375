@@ -1,0 +1,115 @@
+# /asp/config/m375_map
+#
+# The file defines the port mapping between the M375 controllers and the
+# EPICS IOC port numbers. This is used by the ludlum_m375_manage.service
+# to manage the connections.
+#
+# EPICS IOC port numbers are specified in /asp/ics/ics/iocBoot/iocSR00IOC19/st.cmd
+# The port numbers are:
+# 4001 .. 4014   Storage ring sectors 1 .. 14 gamma radiation monitors 
+# 4015 .. 4018   Injection system gamma radiation monitors 
+# 4021 .. 4034   Storage ring sectors 1 .. 14 neutron radiation monitors 
+# 4035 .. 4038   Injection system neutron radiation monitors 
+#
+# M375 port numbers are, by convension the last two octets of the IP address:
+# 1601 .. 1620   Gamma radiation monitors
+# 1621 .. 1640   Neutron radiation monitors
+#
+# By convension we always list the EPICS IOC port number first, and the M375
+# port number last.
+#
+# NOTE: In this file comments starting with # allowed, as are blank lines.
+# Map lines contain two space-separated hostname port number pairs only.
+# No trailing comment are allowed.
+#
+# Note: host is short for SR00IOC19.accelerator.synchrotron.org.au (10.17.100.29)
+# Which is different to localhost (127.0.0.1)
+#
+
+# Injection system
+#
+host 4015  host 1606
+host 4035  host 1630
+
+host 4016  host 1613
+host 4036  host 1628
+
+host 4017  host 1619
+host 4037  host 1635
+
+host 4018  host 1615
+host 4038  host 1622
+
+# Storage Ring
+#
+# Sector 1
+#
+host 4001  host 1616
+host 4021  host 1632
+
+# Sector 2
+#
+host 4002  host 1620
+host 4022  host 1638
+
+# Sector 3
+#
+host 4003  host 1612
+host 4023  host 1636
+
+# Sector 4
+#
+host 4004  host 1611
+host 4024  host 1623
+
+# Sector 5
+#
+host 4005  host 1601
+host 4025  host 1625
+
+# Sector 6
+#
+host 4006  host 1608
+host 4026  host 1624
+
+# Sector 7 
+#
+host 4007  host 1603
+host 4027  host 1640
+
+# Sector 8
+#
+host 4008  host 1607
+host 4028  host 1631
+
+# Sector 9
+#
+host 4009  host 1604
+host 4029  host 1626
+
+# Sector 10
+#
+host 4010  host 1609
+host 4030  host 1627
+
+# Sector 11
+#
+host 4011  host 1614
+host 4031  host 1637
+
+# Sector 12
+#
+host 4012  host 1618
+host 4032  host 1621
+
+# Sector 13
+#
+host 4013  host 1617
+host 4033  host 1629
+
+# Sector 14
+#
+host 4014  host 1602
+host 4034  host 1634
+
+# end

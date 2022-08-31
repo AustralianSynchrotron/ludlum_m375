@@ -1,0 +1,508 @@
+#!/usr/bin/env python
+#
+# $File: //ASP/opa/acc/eqc/saf/ludlum_m375/trunk/Ludlum_M375Sup/src/ludlum_m375_c2c $
+# $Revision: #6 $
+# $DateTime: 2020/09/28 18:58:02 $
+# Last checked in by: $Author: starritt $
+#
+# Description
+# Ths program provides a TCP/IP client to TCP/IP client gender-bender interface.
+#
+# This is usefull for the Ludlum M375 controllers, which unlike most devices,
+# is a TCP/IP client as opposed to a TCP/IP server; and while ASYN can provide
+# TCP/IP server capabilities, the use of this interface tool allows dynamic
+# re-configuration without restarting the IOC.
+#
+# Re-configuration is required as the probes and associated controllers are
+# relocated regualarly as part of the calibration paradigm.
+#
+# NOTE: While written specifically for the Ludlum M375, this tool is
+# quite generic and could reused anywhere a client to client interface
+# is required.
+#
+# Copyright (c) 2020 Australian Synchrotron
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# Licence as published by the Free Software Foundation; either
+# version 2.1 of the Licence, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public Licence for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# Licence along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# Original author: Andrew Starritt
+# Maintained by:   Andrew Starritt
+#
+# Contact details:
+# as-open-source@ansto.gov.au
+# 800 Blackburn Road, Clayton, Victoria 3168, Australia.
+#
+
+import click
+import datetime
+import logging
+import logging.handlers
+import os.path
+import queue
+import signal
+import socket
+import sys
+import time
+import traceback
+import threading
+
+logger = logging.getLogger(__name__)
+
+# -----------------------------------------------------------------------------
+# When updateing to next major release, e.g. 1.3, set _base_revision to
+# the current revision.
+#
+_revision = "$Revision: #6 $"
+_base_revision = 4
+_version = "1.2.%s" % (int(_revision[12:-2]) - _base_revision)
+
+_program = ""
+_shutdown_requested = False
+_exit_code = 0
+
+
+# -----------------------------------------------------------------------------
+#
+def set_logging_paradigm(filename, loglevel):
+    """ Set up the root logger
+    """
+
+    root_logger = logging.getLogger()
+
+    # Set up logging
+    #
+    log_format = "%s %s %s" % ("%(asctime)s.%(msecs)03d",
+                               "%(levelname)-7s",
+                               "%(lineno)4d %(message)s")
+
+    formatter = logging.Formatter(fmt=log_format, datefmt="%Y-%m-%d %H:%M:%S")
+
+    trfh = logging.handlers.TimedRotatingFileHandler(filename,
+                                                     when='midnight',
+                                                     backupCount=14)
+    trfh.setFormatter(formatter)
+
+    root_logger.addHandler(trfh)
+
+    # Convert string to level
+    #
+    level = logging.getLevelName(loglevel)
+    root_logger.setLevel(level)
+
+
+# -----------------------------------------------------------------------------
+#
+def shutdown_has_been_requested():
+    return _shutdown_requested
+
+
+# -----------------------------------------------------------------------------
+#
+def exit_code():
+    return _exit_code
+
+
+# -----------------------------------------------------------------------------
+#
+def request_shutdown(exit_code=None):
+    global _shutdown_requested
+    global _exit_code
+
+    if exit_code is not None:
+        _exit_code = exit_code
+
+    _shutdown_requested = True
+
+
+# -----------------------------------------------------------------------------
+#
+def terminate_signal_handler(sig, _frame):
+    """ Handles sig int and sig term """
+
+    if sig == signal.SIGTERM:
+        signal_name = "SIGTERM"
+
+    elif sig == signal.SIGINT:
+        signal_name = "SIGINT"
+
+    else:
+        signal_name = "Signal " + str(sig)
+
+    logger.info("%s received, initiating orderly shutdown" % signal_name)
+
+    request_shutdown(128 + sig)
+
+
+# -----------------------------------------------------------------------------
+#
+def signal_catch_setup():
+    """ Capture sig int and sig term """
+    signal.signal(signal.SIGTERM, terminate_signal_handler)
+    signal.signal(signal.SIGINT, terminate_signal_handler)
+
+
+# -----------------------------------------------------------------------------
+#
+def process_connection(hp, connection, recv_queue, send_queue, watchdog):
+    """ process_connection
+    """
+    logger.info("Processing %s:%d (watchdog: %s)" % (*hp, watchdog))
+
+    # Set up diagnostic counters for this connection.
+    #
+    recv_count = 0
+    send_count = 0
+
+    # Potentially two threads - one per queue, but just set connection
+    # non blocking and alternate between recv and sendall.
+    #
+    connection.setblocking(False)
+
+    total_wait_time = 0.0
+    delta_time = 0.01
+
+    while not shutdown_has_been_requested():
+        time.sleep(delta_time)
+        total_wait_time += delta_time
+
+        # First try to read data and place onto the receive queue, which is
+        # the other thread's send queue.
+        #
+        try:
+            item = connection.recv(0x7fff)
+            if len(item) == 0:
+                # end of input
+                return
+
+            # We actually received something - reset the total wait time
+            # watch dog timer.
+            #
+            total_wait_time = 0.0
+
+            recv_queue.put(item)
+            recv_count += 1
+
+            # Log every 1000th message.
+            #
+            if (recv_count % 1000) == 0:
+                logger.info("Recv %s:%d message %7d" % (*hp, recv_count))
+
+        except BlockingIOError:
+            if watchdog is not None:
+                if total_wait_time > 60.0 * watchdog:
+                    logger.warn("%s:%d watch dog timer exceeded. Terminating ...." % hp)
+                    request_shutdown()
+                    return
+
+        # Next, try pull item of the send queue, which is the other thread's
+        # receive queue, and wriet to connection.
+        #
+        if send_queue.empty() == False:
+            try:
+                item = send_queue.get_nowait()
+                if item is not None:
+                    connection.sendall(item)
+                    send_queue.task_done()
+                    send_count += 1
+
+                    # Log every 1000th message.
+                    #
+                    if (send_count % 1000) == 0:
+                        logger.info("Sent %s:%d message %7d" % (*hp, send_count))
+
+            except queue.Empty:
+                pass
+
+
+# -----------------------------------------------------------------------------
+#
+def manage_connection(name, port, watchdog, recv_queue, send_queue):
+    """ manage_connection
+        If name is None, then hostname set to gethostname
+    """
+
+    # Force any parameter errors here and now.
+    #
+    port = int(port)
+
+    if name is None:
+        hostname = socket.gethostname()
+    else:
+        hostname = name
+
+    # A useful conveniance tuple
+    #
+    hp = (hostname, port)
+
+    logger.info("Thread %s:%d starting" % hp)
+
+    listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    logger.info("Socket %s:%d created" % hp)
+
+    # Allow socket address reuse.
+    #
+    listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+
+    # Bind socket to nominated host and port
+    try:
+        listen_socket.bind((hostname, port))
+    except socket.error as msg:
+        logger.info("Bind to %s:%d failed: %s" % (*hp, msg))
+        request_shutdown(4)
+        return
+
+    logger.info("Socket %s:%d bind ok" % hp)
+
+    # Start listening on socket, no backlog.
+    #
+    listen_socket.listen(0)
+    listen_socket.setblocking(False)
+
+    logger.info("Socket %s:%d listening" % hp)
+
+    # now keep talking with the client
+    #
+    while not shutdown_has_been_requested():
+        time.sleep(0.2)
+
+        # wait to accept a connection - non blocking - raises exception
+        #
+        try:
+            connection, addr = listen_socket.accept()
+            logger.info("%s:%d connected with %s:%s" % (*hp, addr[0], addr[1]))
+        except BlockingIOError:
+            # check BlockingIOError: [Errno 11] Resource temporarily unavailable
+            # empty send_qeueue
+            while send_queue.empty() == False:
+                try:
+                    item = send_queue.get_nowait()
+                except queue.Empty:
+                    item = None
+
+                if item is None:
+                    break
+                send_queue.task_done()
+
+            continue
+
+        logger.info("Socket %s:%d connected" % hp)
+
+        try:
+            process_connection(hp=hp, connection=connection,
+                               recv_queue=recv_queue, send_queue=send_queue,
+                               watchdog=watchdog)
+        except Exception:
+            traceback.print_exc()
+        finally:
+            connection.close()
+
+        logger.info("Socket %s:%d disconnected" % hp)
+
+    # end while loop
+
+    listen_socket.close()
+
+    # If one thread terminates for what ever reason, initiate shutdown of the other.
+    #
+    request_shutdown()
+    logger.info("Thread %s:%d complete" % hp)
+
+
+# -----------------------------------------------------------------------------
+#
+def run(name1, port1, watchdog1, name2, port2, watchdog2):
+
+    print("Starting c2c version %s, ports %s:%d %s:%d" %
+          (_version, name1, port1, name2, port2))
+
+    # Set up logging.
+    #
+    log_file = "/asp/logs/ludlum_m375/c2c-%04d-%04d.log" % (port1, port2)
+    set_logging_paradigm(log_file, logging.INFO)
+
+    logger.info("Starting, version %s " % _version)
+    # Mimic click error format here
+    #
+    if port1 < 1 or port1 > 0x7fff:
+        logger.error('Invalid value for "PORT1": %s is out of range' % port1)
+        logger.info('Try "%s --help" for help.\n' % _program)
+        os._exit(2)
+
+    if port2 < 1 or port2 > 0x7fff:
+        logger.error('Invalid value for "PORT2": %s is out of range' % port2)
+        logger.info('Try "%s --help" for help.\n' % _program)
+        os._exit(2)
+
+    if port1 == port2:
+        logger.error('Identical values for "PORT1" and "PORT2": %s' % port1)
+        logger.info('Try "%s --help" for help.\n' % _program)
+        os._exit(2)
+
+    logger.info("%s (version %s) %d %d starting" % (_program, _version, port1, port2))
+
+    # Catch sig int/term
+    #
+    signal_catch_setup()
+
+    # Create queues used to pass data between threads.
+    # Each queue is uni-directional.
+    #
+    q1 = queue.Queue()
+    q2 = queue.Queue()
+
+    # Create the threads
+    #
+    t1 = threading.Thread(target=manage_connection,
+                          kwargs={'name': name1, 'port': port1,
+                                  'watchdog': watchdog1,
+                                  'recv_queue': q1, 'send_queue': q2})
+
+    t2 = threading.Thread(target=manage_connection,
+                          kwargs={'name': name2, 'port': port2,
+                                  'watchdog': watchdog2,
+                                  'recv_queue': q2, 'send_queue': q1})
+
+    # Start the threads
+    #
+    t1.start()
+    time.sleep(0.25)  # delay for cosmetic logging only
+    t2.start()
+
+    # Now wait until the thread complete
+    #
+    t1.join()
+    t2.join()
+
+    logger.info("%s complete" % _program)
+    print("%s complete" % _program)
+    print()
+
+    os._exit(exit_code())
+
+
+# -----------------------------------------------------------------------------
+#
+def update_doc_string(func):
+    """ Dynamically sets the doc string used by click when using
+        the -h/--help option.
+    """
+
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+    wrapper.__doc__ = func.__doc__.format(program=_program,
+                                          version=_version,
+                                          host=socket.gethostname())
+    return wrapper
+
+
+# -----------------------------------------------------------------------------
+#
+def print_version(ctx, param, value):
+    """ Click parser helper function 
+    """
+    if not value or ctx.resilient_parsing:
+        return
+
+    vi = sys.version_info
+    print("ludlum_m375_c2c version: %s  (python %s.%s.%s)" %
+          (_version, vi.major, vi.minor, vi.micro))
+    ctx.exit()
+
+
+# -----------------------------------------------------------------------------
+# The click-ified function, inner inside main, is embedded here to delay
+# evaluation of the doc string, to allow expansion of program and version.
+#
+def main():
+
+    context_settings = dict(help_option_names=['--help', '-h'],
+                            terminal_width=80,
+                            max_content_width=80)
+
+    @click.command(context_settings=context_settings,
+                   epilog="""\b\t\b""")  # forces a gap at end of help
+    @click.option('--watchdog1', '-wd1',
+                  type=click.IntRange(1, 30),
+                  default=None,
+                  show_default=True,
+                  help="""Specifies watch dog time limit (in minutes) for \
+NAME1:PORT1, allowed range is 1 to 30. No value implies for ever.""")
+    @click.option('--watchdog2', '-wd2',
+                  type=click.IntRange(1, 30),
+                  default=None,
+                  show_default=True,
+                  help="""Specifies watch dog time limit (in minutes) for \
+NAME2:PORT2, allowed range is 1 to 30. No value implies for ever.""")
+    @click.option('--version', '-V',
+                  is_flag=True,
+                  callback=print_version,
+                  expose_value=False,
+                  is_eager=True,
+                  help="Show version and exit.")
+    @click.argument("name1", type=str, required=True, nargs=1)
+    @click.argument("port1", type=int, required=True, nargs=1)
+    @click.argument("name2", type=str, required=True, nargs=1)
+    @click.argument("port2", type=int, required=True, nargs=1)
+    @update_doc_string
+    def inner(watchdog1, watchdog2, name1, port1, name2, port2):
+        """ {program} v{version}
+
+            {program} allows two TCP/IP clients to communicate with each other.
+
+            NAME1 and NAME2 are network names to which the service binds.
+
+            Use "host" for {host}
+
+            PORT1 and PORT2 define the associated port numbers.
+            These must be in the range 1 to 65535.
+            For non root use these must be greater than or equal to 1024.
+
+            The NAME1/PORT1 and NAME2/PORT2 connections are essentially
+            identical and handled symetrically.
+
+        """
+
+        # Check for "host" which means local host name
+        #
+        if name1 == "host":
+            name1 = socket.gethostname()
+
+        if name2 == "host":
+            name2 = socket.gethostname()
+
+        run(name1, port1, watchdog1, name2, port2, watchdog2)
+
+    inner()
+
+
+# -----------------------------------------------------------------------------
+#
+def call_cli():
+    """ Click wrapper function. This sets environment variables for click and
+        python 3, does no harm for python 2.
+    """
+    os.environ["LANG"] = "en_US.utf8"
+    os.environ["LC_ALL"] = "en_US.utf8"
+
+    global _program
+    _program = os.path.basename(sys.argv[0])
+
+    main()
+
+
+if __name__ == "__main__":
+    call_cli()
+
+# end

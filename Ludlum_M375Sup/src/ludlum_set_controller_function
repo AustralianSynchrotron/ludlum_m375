@@ -1,0 +1,84 @@
+#!/bin/bash
+#
+# $File: //ASP/opa/acc/eqc/saf/ludlum_m375/trunk/Ludlum_M375Sup/src/ludlum_set_controller_function $
+# $Revision: #2 $
+# $DateTime: 2020/09/07 17:22:39 $
+# Last checked in by: $Author: starritt $
+#
+# Description:
+# Called by the ludlum_m375_manage service script to set/update the Ludlum
+# controller functions, i.e which monitr thay are currently controlling.
+#
+# Copyright (c) 2020 Australian Synchrotron
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# Licence as published by the Free Software Foundation; either
+# version 2.1 of the Licence, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public Licence for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# Licence along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# Original author: Andrew Starritt
+# Maintained by:   Andrew Starritt
+#
+# Contact details:
+# as-open-source@ansto.gov.au
+# 800 Blackburn Road, Clayton, Victoria 3168, Australia.
+#
+
+iam=$( basename $0 )
+
+map_file=${1:?}
+
+for rmc in $( seq -w 1 40 ) ; do 
+
+    # Find local TCP/IP port (if any)
+    #
+    port=$( cat ${map_file:?} | grep -v "^#" | grep "40[0-9][0-9].*16${rmc:?}" | awk  '{print $2}' )
+    if [ -z "${port}" ] ; then
+        # Device not in use - is spare or away for calibtration
+        #
+        caput SR00RMC${rmc:?}:BOX_FUNCTION  "Spare or away for calibration"
+        continue
+    fi
+
+    # While the remote port numbers move around, the local port numbers are fixed.
+    # Map local port number to a device.
+    # Extract the local port number minus 4000
+    #
+    number=$( expr  ${port:?} - 4000 )
+
+    if [ ${number:?} -ge 1 ] && [ ${number:?} -lt 15 ] ; then
+        instance=${number:?}
+        if [ ${#instance} -eq 1 ] ; then instance="0${instance:?}" ; fi
+        caput SR00RMC${rmc:?}:BOX_FUNCTION   "Controller for SR${instance:?}GRM01"
+
+    elif [ ${number:?} -ge 15 ] && [ ${number:?} -lt 19 ] ; then
+        instance=$( expr  ${number:?} - 14 )
+        if [ ${#instance} -eq 1 ] ; then instance="0${instance:?}" ; fi
+        caput SR00RMC${rmc:?}:BOX_FUNCTION  "Controller for IS00GRM${instance:?}"
+
+    elif [ ${number:?} -ge 21 ] && [ ${number:?} -lt 35 ] ; then
+        instance=$( expr  ${number:?} - 20 )
+        if [ ${#instance} -eq 1 ] ; then instance="0${instance:?}" ; fi
+        caput SR00RMC${rmc:?}:BOX_FUNCTION  "Controller for SR${instance:?}NRM01"
+
+    elif [ ${number:?} -ge 35 ] && [ ${number:?} -lt 39 ] ; then
+        instance=$( expr  ${number:?} - 34 )
+        if [ ${#instance} -eq 1 ] ; then instance="0${instance:?}" ; fi
+        caput SR00RMC${rmc:?}:BOX_FUNCTION  "Controller for IS00NRM${instance:?}"
+
+    else
+        echo "rmc ${rmc:?}: unexpected port number ${port:?}"
+    fi
+
+done
+
+# end
