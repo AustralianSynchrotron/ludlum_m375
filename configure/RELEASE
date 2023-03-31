@@ -11,7 +11,7 @@
 # Define path to sequencer if needed
 #SNCSEQ=/epics/seq
 
-# Asyn - modify to point to youe ASYN location
+# Asyn - modify to point to your ASYN location
 ASYN=/epics/asyn
 
 # EPICS_BASE usually appears last so other apps can preempt definitions
